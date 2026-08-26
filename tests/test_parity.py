@@ -84,9 +84,9 @@ def test_random_metric_parity(upstream_pyemd, n, balanced):
     assert ours == pytest.approx(theirs, rel=2e-12, abs=2e-12)
 
 
-def test_simd_tail_parity(upstream_pyemd):
-    rng = np.random.default_rng(701)
-    n = 7
+@pytest.mark.parametrize("n", [7, 8])
+def test_simd_tail_parity(upstream_pyemd, n):
+    rng = np.random.default_rng(701 + n)
     points = rng.normal(size=(n, 3))
     matrix = np.linalg.norm(points[:, None] - points[None, :], axis=2)
     first = rng.random(n)
@@ -97,9 +97,9 @@ def test_simd_tail_parity(upstream_pyemd):
     )
 
 
-def test_sparse_reverse_threshold_parity(upstream_pyemd):
-    rng = np.random.default_rng(971)
-    n = 97
+@pytest.mark.parametrize("n", [23, 24, 25])
+def test_sparse_reverse_threshold_parity(upstream_pyemd, n):
+    rng = np.random.default_rng(971 + n)
     points = rng.normal(size=(n, 3))
     matrix = np.linalg.norm(points[:, None] - points[None, :], axis=2)
     first = rng.random(n)
@@ -110,7 +110,7 @@ def test_sparse_reverse_threshold_parity(upstream_pyemd):
     )
 
 
-def test_parallel_flow_clear_threshold():
+def test_large_simd_flow_clear():
     n = 512
     first = np.linspace(1.0, 2.0, n)
     matrix = np.zeros((n, n), dtype=np.float64)

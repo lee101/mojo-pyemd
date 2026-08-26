@@ -78,16 +78,22 @@ histograms and a dense Euclidean ground-distance matrix.
 
 | balanced dense EMD | mojo-pyemd | pyemd 2.0.0 | speedup |
 |---:|---:|---:|---:|
-| 8 bins | 0.091 ms | 0.402 ms | 4.42x |
-| 16 bins | 0.156 ms | 0.461 ms | 2.95x |
-| 32 bins | 0.519 ms | 0.513 ms | 0.99x |
-| 64 bins | 4.151 ms | 0.715 ms | 0.17x |
-| 128 bins | 14.449 ms | 2.281 ms | 0.16x |
+| 8 bins | 0.076 ms | 0.295 ms | 3.87x |
+| 16 bins | 0.104 ms | 0.368 ms | 3.55x |
+| 32 bins | 0.270 ms | 0.429 ms | 1.59x |
+| 64 bins | 1.822 ms | 0.598 ms | 0.33x |
+| 128 bins | 7.316 ms | 1.219 ms | 0.17x |
 
-Mojo wins through 16 bins in this run because it avoids much of POT's setup
-cost. PyEMD/POT is faster from 32 bins upward: its mature network-simplex
+Mojo wins through 32 bins in this run because it avoids much of POT's setup
+cost. PyEMD/POT is faster from 64 bins upward: its mature network-simplex
 implementation scales better than this port's successive-shortest-path
 solver.
+
+No GPU path is provided. The hot dense relaxations perform only a few
+arithmetic operations while loading and conditionally storing several values
+per edge, well below the roughly 2-flop-per-byte threshold where transfer and
+launch costs could pay off. The residual-edge traversal is also irregular and
+sequential between augmentations.
 
 ## How it works
 
@@ -103,14 +109,15 @@ problem with successive shortest augmenting paths. Reduced-cost node
 potentials make each residual shortest-path search a dense Dijkstra pass;
 reverse residual edges allow earlier assignments to be rerouted. Dense
 minimum scans and forward relaxations use unaligned-safe SIMD loads and scalar
-tails. Large problems track the sparse set of reverse flow edges instead of
-scanning strided dense columns, and the search stops as soon as the sink is
-finalized.
+tails. Per-search scratch initialization is SIMD-vectorized as well. Problems
+of 24 bins or more track sparse reverse flow edges instead of scanning strided
+dense columns, and the search stops as soon as the sink is finalized.
 
 All matrices are row-major, including the cost and returned flow matrices.
 Already aligned native `float64` inputs cross the FFI boundary without a copy;
 other valid array-like inputs are safely converted. Per-thread scratch buffers
-are reused across calls, and large flow buffers are cleared in parallel.
+are reused across calls, and flow buffers are cleared with unaligned-safe SIMD
+stores and a scalar tail.
 
 ## License
 

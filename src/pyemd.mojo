@@ -7,7 +7,7 @@ comptime FPtr = UnsafePointer[Float64, AnyOrigin[mut=True]]
 comptime IPtr = UnsafePointer[Int64, AnyOrigin[mut=True]]
 comptime INF = 1.0e300
 comptime W = simdwidthof[DType.float64]()
-comptime SPARSE_REVERSE_THRESHOLD = 96
+comptime SPARSE_REVERSE_THRESHOLD = 24
 
 
 def clear_flow(flow: FPtr, count: Int):
@@ -77,27 +77,62 @@ def solve_transport(
     var node_count = 2 * n + 2
     var source = 2 * n
     var sink = source + 1
-    for v in range(node_count):
+    var v = 0
+    var zeros_f = SIMD[DType.float64, W](0.0)
+    while v + W <= node_count:
+        potential.store[alignment=1](v, zeros_f)
+        v += W
+    while v < node_count:
         potential[v] = 0.0
+        v += 1
 
     while remaining > 0.0:
-        for v in range(node_count):
+        v = 0
+        var infinities = SIMD[DType.float64, W](INF)
+        var negative_ones = SIMD[DType.int64, W](-1)
+        var zeros_i = SIMD[DType.int64, W](0)
+        while v + W <= node_count:
+            distance.store[alignment=1](v, infinities)
+            previous.store[alignment=1](v, negative_ones)
+            visited.store[alignment=1](v, zeros_i)
+            v += W
+        while v < node_count:
             distance[v] = INF
             previous[v] = -1
             visited[v] = 0
+            v += 1
         distance[source] = 0.0
         visited[source] = 1
-        for i in range(n):
+        i = 0
+        while i + W <= n:
+            var positive = supply.load[width=W, alignment=1](i).gt(0.0)
+            var initial_distance = max(
+                zeros_f,
+                SIMD[DType.float64, W](potential[source])
+                - potential.load[width=W, alignment=1](i),
+            )
+            distance.store[alignment=1](
+                i, positive.select(initial_distance, infinities)
+            )
+            previous.store[alignment=1](
+                i,
+                positive.select(
+                    SIMD[DType.int64, W](Int64(source)), negative_ones
+                ),
+            )
+            i += W
+        while i < n:
             if supply[i] > 0.0:
                 distance[i] = max(
                     0.0, potential[source] - potential[i]
                 )
                 previous[i] = Int64(source)
+            i += 1
 
         for _ in range(node_count - 1):
             var u = -1
             var best = INF
-            var v = 0
+            v = 0
             while n >= SPARSE_REVERSE_THRESHOLD and v + 4 * W <= node_count:
                 var eligible0 = visited.load[
                     width=W, alignment=1

@@ -1,6 +1,5 @@
 """Dense Earth Mover's Distance over caller-owned row-major buffers."""
 
-from std.algorithm import parallelize
 from std.ffi import external_call
 from std.sys.info import simd_width_of as simdwidthof
 
@@ -8,35 +7,16 @@ comptime FPtr = UnsafePointer[Float64, AnyOrigin[mut=True]]
 comptime IPtr = UnsafePointer[Int64, AnyOrigin[mut=True]]
 comptime INF = 1.0e300
 comptime W = simdwidthof[DType.float64]()
-comptime PARALLEL_FLOW_ELEMENTS = 262_144
-comptime FLOW_CHUNK_ELEMENTS = 65_536
-comptime MAX_FLOW_WORKERS = 4
 comptime SPARSE_REVERSE_THRESHOLD = 96
 
 
 def clear_flow(flow: FPtr, count: Int):
-    if count >= PARALLEL_FLOW_ELEMENTS:
-        var chunks = (count + FLOW_CHUNK_ELEMENTS - 1) // FLOW_CHUNK_ELEMENTS
-
-        @parameter
-        def clear_chunk(chunk: Int):
-            var start = chunk * FLOW_CHUNK_ELEMENTS
-            var end = min(start + FLOW_CHUNK_ELEMENTS, count)
-            var vector_end = start + (end - start) // W * W
-            var zeros = SIMD[DType.float64, W](0.0)
-            for k in range(start, vector_end, W):
-                flow.store[alignment=1](k, zeros)
-            for k in range(vector_end, end):
-                flow[k] = 0.0
-
-        parallelize[clear_chunk](chunks, min(chunks, MAX_FLOW_WORKERS))
-    else:
-        var vector_end = count // W * W
-        var zeros = SIMD[DType.float64, W](0.0)
-        for k in range(0, vector_end, W):
-            flow.store[alignment=1](k, zeros)
-        for k in range(vector_end, count):
-            flow[k] = 0.0
+    var vector_end = count // W * W
+    var zeros = SIMD[DType.float64, W](0.0)
+    for k in range(0, vector_end, W):
+        flow.store[alignment=1](k, zeros)
+    for k in range(vector_end, count):
+        flow[k] = 0.0
 
 
 def solve_transport(
